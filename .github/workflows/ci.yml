@@ -1,0 +1,29 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build UI
+        run: docker build -t ui:${{ github.sha }} ./ui
+
+      - name: Build API
+        run: docker build -t api:${{ github.sha }} ./api
+
+      - name: Health check
+        run: |
+          docker compose up -d
+          sleep 10
+          curl -f http://localhost:3000 || exit 1
+          curl -f http://localhost:3000/api/health || exit 1
+          docker compose down
