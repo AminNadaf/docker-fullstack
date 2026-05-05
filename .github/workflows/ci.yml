@@ -21,9 +21,14 @@ jobs:
         run: docker build -t api:${{ github.sha }} ./api
 
       - name: Health check
+        env:
+            DB_NAME: appdb
+            DB_USER: appuser
+            DB_PASSWORD: testpassword
+            MAIL_FROM: noreply@example.com
         run: |
           docker compose up -d
-          sleep 10
+          sleep 15
           curl -f http://localhost:3000 || exit 1
           curl -f http://localhost:3000/api/health || exit 1
           docker compose down
