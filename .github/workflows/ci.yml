@@ -123,7 +123,7 @@ jobs:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_DATA }}
         run: |
           mkdir -p $HOME/.kube
-          echo "$KUBECONFIG_DATA" | base64 -d > $HOME/.kube/config
+          echo "$KUBECONFIG_DATA" | tr -d '\n\r ' | base64 -d > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
           kubectl cluster-info
 
