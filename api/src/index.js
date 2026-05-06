@@ -2,10 +2,10 @@ import express from "express";
 import pg from "pg";
 import nodemailer from "nodemailer";
 
-const app = express();
+export const app = express();
 app.use(express.json());
 
-const pool = new pg.Pool({
+export const pool = new pg.Pool({
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT) || 5432,
   database: process.env.DB_NAME,
@@ -13,7 +13,7 @@ const pool = new pg.Pool({
   password: process.env.DB_PASSWORD,
 });
 
-const mailer = nodemailer.createTransport({
+export const mailer = nodemailer.createTransport({
   host: process.env.MAIL_HOST,
   port: Number(process.env.MAIL_PORT) || 25,
   secure: false,
@@ -48,4 +48,6 @@ app.post("/users", async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
-app.listen(4000, () => console.log("API listening on :4000"));
+if (process.env.NODE_ENV !== "test") {
+  app.listen(4000, () => console.log("API listening on :4000"));
+}

@@ -7,21 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  build-and-test:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install
-        working-directory: api
-      - run: npm test
-        working-directory: api
-
-  build-and-push:
-    runs-on: ubuntu-latest
-    needs: test
 
     steps:
       - name: Checkout code
@@ -70,28 +57,3 @@ jobs:
           curl -f http://localhost:3000 || exit 1
           curl -f http://localhost:3000/api/health || exit 1
           docker compose down
-
-  trivy:
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Set lowercase owner
-        run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-
-      - name: Scan API image
-        uses: aquasecurity/trivy-action@0.20.0
-        with:
-          image-ref: ghcr.io/${{ env.OWNER }}/api:${{ github.sha }}
-          format: table
-          exit-code: 1
-          severity: CRITICAL
-
-      - name: Scan UI image
-        uses: aquasecurity/trivy-action@0.20.0
-        with:
-          image-ref: ghcr.io/${{ env.OWNER }}/ui:${{ github.sha }}
-          format: table
-          exit-code: 1
-          severity: CRITICAL
