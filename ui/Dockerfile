@@ -7,7 +7,8 @@ COPY . .
 RUN npm run build
 
 # ── Stage 2: serve with Nginx ────────────────────────────────────────────────
-FROM nginx:1.27-alpine AS runner
+FROM nginx:1.28-alpine AS runner
+RUN apk upgrade --no-cache
 COPY --from=builder /app/dist /usr/share/nginx/html
 # Proxy /api to the API service
 COPY nginx.conf /etc/nginx/conf.d/default.conf

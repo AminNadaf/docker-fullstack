@@ -6,6 +6,7 @@ RUN npm install --omit=dev --silent
 
 # ── Stage 2: production image ────────────────────────────────────────────────
 FROM node:20-alpine AS runner
+RUN apk upgrade --no-cache
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
