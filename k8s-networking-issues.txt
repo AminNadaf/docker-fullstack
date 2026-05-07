@@ -1,0 +1,126 @@
+================================================================================
+K8s ON AWS EC2 — NETWORKING ISSUES, ERRORS & FIXES
+================================================================================
+
+--------------------------------------------------------------------------------
+ISSUE 1: Source/Destination Check Enabled on EC2
+--------------------------------------------------------------------------------
+
+WHAT IT IS:
+  By default, AWS EC2 instances only accept/send traffic where the source or
+  destination IP matches the instance's own IP. This is a security feature for
+  NAT instances, but it breaks Kubernetes pod networking because pods have their
+  own IP range (e.g. 192.168.x.x) that is different from the EC2 instance IP.
+
+ERROR SEEN:
+  - Pods on different nodes cannot communicate
+  - DNS timeouts: ";; connection timed out; no servers could be reached"
+  - kubectl exec commands hang or fail
+  - Calico routes exist but traffic is silently dropped
+
+HOW TO FIX — AWS CLI:
+  aws ec2 modify-instance-attribute \
+    --instance-id <instance-id> \
+    --source-dest-check '{"Value": false}' \
+    --region us-east-2
+
+  Run this for ALL nodes (master + workers).
+
+HOW TO FIX — AWS PORTAL:
+  1. Go to EC2 Console → Instances
+  2. Select the instance (repeat for each node)
+  3. Click Actions → Networking → Change source/destination check
+  4. Uncheck "Enable" → Click Save
+  5. Repeat for all 3 instances
+
+--------------------------------------------------------------------------------
+ISSUE 2: IPIP Protocol (Protocol 4) Blocked by Security Group
+--------------------------------------------------------------------------------
+
+WHAT IT IS:
+  Calico uses IPIP (IP-in-IP) tunneling to route pod traffic between nodes on
+  AWS. IPIP is IP protocol number 4 (not TCP/UDP — it is a separate protocol).
+  AWS Security Groups block all protocols by default unless explicitly allowed.
+  Since IPIP is not TCP or UDP, it is not covered by the "all TCP" rule.
+
+ERROR SEEN:
+  - ping between pod CIDRs across nodes: 100% packet loss
+  - DNS resolution fails (CoreDNS is on master, app pods are on workers)
+  - "connection timed out; no servers could be reached"
+  - Health probes fail: "context deadline exceeded"
+  - UI nginx crash: "host not found in upstream"
+  - API returns 503 (can't reach DB across nodes)
+
+DIAGNOSIS:
+  # Check if cross-node pod ping works
+  ping -c 3 192.168.196.194   # from worker, pinging master pod IP → 100% loss
+
+  # Check Calico is using IPIP
+  kubectl get ippool -o yaml | grep -E "ipipMode|vxlanMode"
+  # ipipMode: Always  ← confirms IPIP is in use
+
+  # Check tunnel interface exists
+  ip link show tunl0   # exists but traffic is dropped by AWS
+
+HOW TO FIX — AWS CLI:
+  aws ec2 authorize-security-group-ingress \
+    --group-id <security-group-id> \
+    --ip-permissions '[{"IpProtocol": "4", "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}]' \
+    --region us-east-2
+
+HOW TO FIX — AWS PORTAL:
+  1. Go to EC2 Console → Security Groups
+  2. Select the security group used by your K8s nodes
+  3. Click Inbound rules → Edit inbound rules
+  4. Click Add rule
+  5. Set:
+       Type:       Custom Protocol
+       Protocol:   4  (this is IPIP / IP-in-IP)
+       Port range: All
+       Source:     0.0.0.0/0  (or restrict to your VPC CIDR e.g. 172.31.0.0/16)
+  6. Click Save rules
+
+--------------------------------------------------------------------------------
+ISSUE 3: Combined Effect — Complete DNS and Cross-Node Failure
+--------------------------------------------------------------------------------
+
+WHAT BROKE:
+  Both issues together caused:
+  - CoreDNS pods (on master) unreachable from worker pods
+  - kube-dns service IP (10.96.0.10) unreachable across nodes
+  - All service discovery broken (pods can't find "db", "api" by name)
+  - UI nginx crashed on startup (couldn't resolve "api" upstream)
+  - API health endpoint returned 503 (couldn't reach DB by hostname)
+  - Readiness probes failed → pods stuck in Running but not Ready
+  - Rollout timed out in CI/CD pipeline
+
+FULL FIX ORDER:
+  1. Disable source/destination check on all EC2 instances (AWS portal or CLI)
+  2. Allow IPIP protocol in the security group inbound rules
+  3. Restart Calico daemonset to re-establish tunnels:
+       kubectl rollout restart daemonset/calico-node -n kube-system
+  4. Wait ~30 seconds, then verify:
+       ping -c 3 <cross-node-pod-ip>           # should succeed
+       kubectl exec <pod> -- nslookup db        # should resolve
+       kubectl exec <pod> -- wget -qO- http://localhost:4000/health  # should return {"status":"ok"}
+
+--------------------------------------------------------------------------------
+PREVENTION — DO THIS BEFORE CREATING A K8s CLUSTER ON AWS EC2
+--------------------------------------------------------------------------------
+
+  1. Disable source/dest check on ALL instances at launch time
+     (can be done in Launch Template → Advanced → Source/dest check → Disabled)
+
+  2. Add IPIP (protocol 4) to the security group BEFORE installing Calico
+
+  3. Security group minimum required rules for K8s + Calico:
+     - TCP 22          (SSH)
+     - TCP 6443        (K8s API server)
+     - TCP 2379-2380   (etcd)
+     - TCP 10250       (kubelet)
+     - TCP 10251-10252 (scheduler, controller)
+     - TCP 30000-32767 (NodePort services)
+     - Protocol 4      (IPIP for Calico)
+     - All traffic within the security group (self-referencing rule)
+
+================================================================================
