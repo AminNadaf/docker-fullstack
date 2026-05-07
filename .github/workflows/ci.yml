@@ -148,14 +148,13 @@ jobs:
 
       - name: Notify Slack on staging failure
         if: failure()
-        uses: slackapi/slack-github-action@v1.27.0
-        with:
-          payload: |
-            {
-              "text": "❌ *Staging deploy failed* on `${{ github.repository }}` by `${{ github.actor }}`\nCommit: ${{ github.sha }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
-            }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          [ -z "$SLACK_WEBHOOK_URL" ] && exit 0
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{\"text\":\"❌ *Staging deploy failed* on \`${{ github.repository }}\` by \`${{ github.actor }}\`\nCommit: ${{ github.sha }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>\"}"
 
   deploy-production:
     runs-on: ubuntu-latest
@@ -197,22 +196,20 @@ jobs:
 
       - name: Notify Slack on success
         if: success()
-        uses: slackapi/slack-github-action@v1.27.0
-        with:
-          payload: |
-            {
-              "text": "✅ *Production deploy succeeded* on `${{ github.repository }}` by `${{ github.actor }}`\nCommit: ${{ github.sha }}"
-            }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          [ -z "$SLACK_WEBHOOK_URL" ] && exit 0
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{\"text\":\"✅ *Production deploy succeeded* on \`${{ github.repository }}\` by \`${{ github.actor }}\`\nCommit: ${{ github.sha }}\"}"
 
       - name: Notify Slack on failure
         if: failure()
-        uses: slackapi/slack-github-action@v1.27.0
-        with:
-          payload: |
-            {
-              "text": "🚨 *Production deploy FAILED + rolled back* on `${{ github.repository }}` by `${{ github.actor }}`\nCommit: ${{ github.sha }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
-            }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          [ -z "$SLACK_WEBHOOK_URL" ] && exit 0
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{\"text\":\"🚨 *Production deploy FAILED + rolled back* on \`${{ github.repository }}\` by \`${{ github.actor }}\`\nCommit: ${{ github.sha }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>\"}"
